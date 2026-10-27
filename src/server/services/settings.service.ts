@@ -7,7 +7,7 @@ type Db = Prisma.TransactionClient | PrismaClient;
 
 const DEFAULT_SETTINGS = {
   id: "default",
-  businessName: "Aluminum & Glass Shop",
+  businessName: "Aluminium & Glass work",
   currency: "PKR",
   invoicePrefix: "INV",
   timeZone: "Asia/Karachi",
@@ -55,12 +55,9 @@ export async function updateSettings(input: {
   phone?: string | null;
   email?: string | null;
   invoicePrefix: string;
-  currency: string;
   taxEnabled: boolean;
   taxRate: string;
   taxLabel: string;
-  defaultTerms?: string | null;
-  defaultNotes?: string | null;
   paymentTermDays?: number | null;
   timeZone: string;
 }) {
@@ -80,12 +77,9 @@ export async function updateSettings(input: {
       phone: emptyToNull(input.phone),
       email: emptyToNull(input.email)?.toLowerCase() ?? null,
       invoicePrefix: prefix,
-      currency: input.currency.trim().toUpperCase(),
       taxEnabled: input.taxEnabled,
       taxRate: input.taxRate,
       taxLabel: input.taxLabel.trim() || "Tax",
-      defaultTerms: emptyToNull(input.defaultTerms),
-      defaultNotes: emptyToNull(input.defaultNotes),
       paymentTermDays: input.paymentTermDays ?? null,
       timeZone: input.timeZone,
     },

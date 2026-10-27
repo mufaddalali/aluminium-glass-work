@@ -23,6 +23,7 @@ export function LoginForm() {
   async function onSubmit(values: LoginValues) {
     try {
       await api.post("/auth/login", values);
+      toast.success(messages.login.success);
       router.push("/dashboard");
       router.refresh();
     } catch (error) {
@@ -33,8 +34,8 @@ export function LoginForm() {
   return (
     <form className="surface-card w-full max-w-md space-y-5 p-6" onSubmit={form.handleSubmit(onSubmit)} noValidate>
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.08em] text-primary">{messages.appName}</p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight">{messages.login.title}</h1>
+        <p className="text-sm font-semibold tracking-tight text-primary">{messages.appName}</p>
+        <h1 className="mt-2 text-3xl font-bold tracking-tight">{messages.login.title}</h1>
         <p className="mt-2 text-sm text-muted-foreground">{messages.login.description}</p>
       </div>
       <Field label={messages.login.email} htmlFor="email" error={form.formState.errors.email?.message}>

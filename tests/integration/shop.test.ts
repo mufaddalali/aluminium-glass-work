@@ -11,7 +11,6 @@ import { ensureSettings } from "@/server/services/settings.service";
 const created = {
   users: [] as string[],
   emails: [] as string[],
-  categories: [] as string[],
   products: [] as string[],
   customers: [] as string[],
   invoices: [] as string[],
@@ -26,12 +25,6 @@ async function makeUser(active = true) {
   created.users.push(user.id);
   created.emails.push(email);
   return { user, email, password };
-}
-
-async function makeCategory() {
-  const category = await prisma.productCategory.create({ data: { name: `Category ${crypto.randomUUID()}` } });
-  created.categories.push(category.id);
-  return category;
 }
 
 async function makeCustomer() {
@@ -65,14 +58,10 @@ describe("shop transactions", () => {
 
   it("keeps stock and the ledger consistent", async () => {
     const account = await makeUser();
-    const category = await makeCategory();
     const product = await createProduct({
       name: "Clear glass",
-      categoryId: category.id,
-      inventoryUnit: "SQ_FT",
-      minimumStockLevel: "5",
       defaultSellingPrice: "100",
-      openingQuantity: "10",
+      quantity: "10",
     }, account.user.id);
     created.products.push(product.id);
     expect(product.stockQuantity).toBe("10.000");
@@ -89,10 +78,9 @@ describe("shop transactions", () => {
   it("enforces stock and outside-purchase invoice rules", async () => {
     await ensureSettings();
     const account = await makeUser();
-    const category = await makeCategory();
     const customer = await makeCustomer();
-    const stocked = await createProduct({ name: "Glass A", categoryId: category.id, inventoryUnit: "SQ_FT", minimumStockLevel: "0", defaultSellingPrice: "100", openingQuantity: "10" }, account.user.id);
-    const outside = await createProduct({ name: "Glass B", categoryId: category.id, inventoryUnit: "SQ_FT", minimumStockLevel: "0", defaultSellingPrice: "80", openingQuantity: "500" }, account.user.id);
+    const stocked = await createProduct({ name: "Glass A", defaultSellingPrice: "100", quantity: "10" }, account.user.id);
+    const outside = await createProduct({ name: "Glass B", defaultSellingPrice: "80", quantity: "500" }, account.user.id);
     created.products.push(stocked.id, outside.id);
 
     const draft = await createInvoice({
@@ -200,7 +188,7 @@ async function removeTestRows() {
     select: { id: true, email: true },
   });
   const userIds = users.map((user) => user.id);
-  if (userIds.length === 0 && created.categories.length === 0 && created.customers.length === 0) return;
+  if (userIds.length === 0 && created.customers.length === 0) return;
   const invoices = userIds.length
     ? await prisma.invoice.findMany({ where: { createdById: { in: userIds } }, select: { id: true, customerId: true } })
     : [];
@@ -226,7 +214,4 @@ async function removeTestRows() {
   const emails = [...new Set([...created.emails, ...users.map((user) => user.email)])];
   if (emails.length) await prisma.loginAttempt.deleteMany({ where: { emailKey: { in: emails } } });
   if (userIds.length) await prisma.user.deleteMany({ where: { id: { in: userIds } } });
-  await prisma.productCategory.deleteMany({
-    where: { OR: [...(created.categories.length ? [{ id: { in: created.categories } }] : []), { name: { startsWith: "Category " }, products: { none: {} } }] },
-  });
 }

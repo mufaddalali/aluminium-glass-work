@@ -1,5 +1,5 @@
 export const messages = {
-  appName: "Workshop ledger",
+  appName: "Aluminium & Glass work",
   login: {
     title: "Sign in",
     description: "Use the owner account created for this shop.",
@@ -8,6 +8,7 @@ export const messages = {
     show: "Show password",
     hide: "Hide password",
     submit: "Sign in",
+    success: "Signed in successfully.",
     invalid: "The email or password is incorrect.",
   },
   nav: {

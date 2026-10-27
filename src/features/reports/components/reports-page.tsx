@@ -6,6 +6,7 @@ import { ErrorState } from "@/components/feedback/states";
 import { PageHeader, Pagination } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SearchSelect } from "@/components/ui/search-select";
 import { Table, TableWrap, THead, Th, Td, Tr } from "@/components/ui/table";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { getReport } from "@/features/reports/services/report.service";
@@ -18,7 +19,6 @@ const reports = [
   ["outstanding", "Outstanding"],
   ["customers", "Customer balances"],
   ["stock", "Stock on hand"],
-  ["low-stock", "Low stock"],
   ["movements", "Movements"],
   ["payments", "Payments"],
   ["outside", "Outside purchases"],
@@ -42,8 +42,8 @@ export function ReportsPage() {
       <div className="flex flex-wrap gap-2">
         {reports.map(([value, label]) => <Button key={value} variant={type === value ? "primary" : "outline"} onClick={() => { setType(value); setPage(1); }}>{label}</Button>)}
       </div>
-      <div className="surface-card grid gap-3 p-4 md:grid-cols-3">
-        <Input aria-label="Search report" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Search" />
+      <div className="grid gap-2 md:grid-cols-3">
+        <SearchSelect ariaLabel="Search report" placeholder="Search" value={search} onChange={(value) => { setSearch(value); setPage(1); }} loading={search !== debounced || report.isFetching} />
         <Input aria-label="From" type="date" value={from} onChange={(event) => { setFrom(event.target.value); setPage(1); }} />
         <Input aria-label="To" type="date" value={to} onChange={(event) => { setTo(event.target.value); setPage(1); }} />
       </div>

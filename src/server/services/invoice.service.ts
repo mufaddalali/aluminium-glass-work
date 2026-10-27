@@ -84,7 +84,7 @@ export async function createInvoice(input: InvoiceInput, userId: string) {
   return prisma.$transaction(async (tx) => {
     await assertActiveCustomer(tx, input.customerId);
     const settings = await ensureSettings(tx);
-    const lines = await normalizeLines(tx, input.lines, false);
+    const lines = await normalizeLines(tx, input.lines);
     const totals = totalsFor(lines, input.discountAmount, settings.taxEnabled, settings.taxRate.toString());
     const invoice = await tx.invoice.create({
       data: {
@@ -93,8 +93,8 @@ export async function createInvoice(input: InvoiceInput, userId: string) {
         invoiceDate: input.invoiceDate,
         dueDate: input.dueDate ?? null,
         ...totalData(totals),
-        notes: emptyToNull(input.notes) ?? settings.defaultNotes,
-        terms: emptyToNull(input.terms) ?? settings.defaultTerms,
+        notes: emptyToNull(input.notes),
+        terms: emptyToNull(input.terms),
         createdById: userId,
         lines: { create: lines.map(lineCreateData) },
       },
@@ -112,7 +112,7 @@ export async function updateInvoice(id: string, input: InvoiceInput) {
     }
     await assertActiveCustomer(tx, input.customerId);
     const settings = await ensureSettings(tx);
-    const lines = await normalizeLines(tx, input.lines, false);
+    const lines = await normalizeLines(tx, input.lines);
     const totals = totalsFor(lines, input.discountAmount, settings.taxEnabled, settings.taxRate.toString());
     await tx.invoiceLine.deleteMany({ where: { invoiceId: id } });
     await tx.invoice.update({
@@ -149,7 +149,7 @@ export async function issueInvoice(id: string, userId: string) {
     const current = await tx.invoice.findUniqueOrThrow({ where: { id }, include: invoiceInclude });
     if (!current.customer.isActive) throw new ApiError(409, "CUSTOMER_ARCHIVED", "This customer is archived.");
     const settings = await ensureSettings(tx);
-    const lines = await normalizeLines(tx, current.lines.map(storedLineToInput), true);
+    const lines = await normalizeLines(tx, current.lines.map(storedLineToInput));
     const totals = totalsFor(lines, current.discountAmount.toString(), settings.taxEnabled, settings.taxRate.toString());
     await assertStockAvailable(tx, lines);
     const invoiceNumber = current.invoiceNumber ?? (await nextInvoiceNumber(tx, settings.invoicePrefix, settings.timeZone));
@@ -167,7 +167,7 @@ export async function issueInvoice(id: string, userId: string) {
         createdById: userId,
         referenceType: "INVOICE",
         referenceId: id,
-        expectedUnit: line.unit,
+        unit: line.unit,
       });
     }
     const status = statusFromPayments(totals.totalAmount, 0);
@@ -214,8 +214,7 @@ export async function voidInvoice(id: string, reason: string, userId: string) {
         createdById: userId,
         referenceType: "INVOICE",
         referenceId: id,
-        expectedUnit: line.unit,
-        allowInactive: true,
+        unit: line.unit,
       });
     }
     await tx.invoice.update({
@@ -337,7 +336,6 @@ async function assertStockAvailable(tx: Prisma.TransactionClient, lines: Normali
   for (const productId of [...required.keys()].sort()) {
     const product = await lockProduct(tx, productId);
     const need = required.get(productId) ?? new Decimal(0);
-    if (!product.isActive) throw new ApiError(409, "PRODUCT_ARCHIVED", `${product.name} is archived.`);
     if (product.stockQuantity.lt(need)) {
       throw new ApiError(409, "INSUFFICIENT_STOCK", `${product.name} does not have enough stock.`, {
         productId,
@@ -345,7 +343,6 @@ async function assertStockAvailable(tx: Prisma.TransactionClient, lines: Normali
         available: qtyString(product.stockQuantity),
         required: qtyString(need),
         shortfall: qtyString(need.minus(product.stockQuantity)),
-        unit: product.inventoryUnit,
       });
     }
   }
@@ -385,7 +382,7 @@ async function assertActiveCustomer(tx: Db, customerId: string) {
 
 type NormalizedLine = ReturnType<typeof lineCreateData> & { quantity: string; productId: string | null; sourceType: SourceType; unit: InventoryUnit };
 
-async function normalizeLines(tx: Db, lines: LineInput[], requireActiveProducts: boolean) {
+async function normalizeLines(tx: Db, lines: LineInput[]) {
   if (lines.length === 0) throw new ApiError(400, "NO_LINES", "Add at least one invoice line.");
   const ids = [...new Set(lines.flatMap((line) => (line.productId ? [line.productId] : [])))];
   const products = ids.length ? await tx.product.findMany({ where: { id: { in: ids } } }) : [];
@@ -393,16 +390,8 @@ async function normalizeLines(tx: Db, lines: LineInput[], requireActiveProducts:
   return lines.map((line, index) => {
     const product = line.productId ? byId.get(line.productId) : undefined;
     if (line.productId && !product) throw new ApiError(400, "PRODUCT_NOT_FOUND", "One of the selected products no longer exists.");
-    if (line.sourceType === "STOCK") {
-      if (!product) throw new ApiError(400, "STOCK_PRODUCT_REQUIRED", "A shop-stock line needs a product from inventory.");
-      if (requireActiveProducts && !product.isActive) {
-        throw new ApiError(409, "PRODUCT_ARCHIVED", `${product.name} is archived and cannot be sold from stock.`);
-      }
-      if (line.unit && line.unit !== product.inventoryUnit) {
-        throw new ApiError(400, "UNIT_MISMATCH", `${product.name} is stocked in a different unit.`);
-      }
-    }
-    const unit = (line.sourceType === "STOCK" ? product?.inventoryUnit : line.unit || product?.inventoryUnit) as InventoryUnit | undefined;
+    if (line.sourceType === "STOCK" && !product) throw new ApiError(400, "STOCK_PRODUCT_REQUIRED", "A shop-stock line needs a product from inventory.");
+    const unit = line.unit;
     if (!unit) throw new ApiError(400, "UNIT_REQUIRED", "Choose a unit for each line.");
     let quantity;
     try {

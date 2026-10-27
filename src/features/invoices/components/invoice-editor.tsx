@@ -2,23 +2,28 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
 import { Input, Textarea } from "@/components/ui/input";
+import { SearchSelect } from "@/components/ui/search-select";
+import { InvoiceSheet, moneyLabel } from "@/features/invoices/components/invoice-sheet";
 import { InvoiceSourcePicker } from "@/features/invoices/components/invoice-source-picker";
+import { customerSchema } from "@/features/customers/schemas/customer.schema";
 import { createCustomerInline, getInvoiceSettings, issueInvoice, saveInvoice, searchCustomers, searchProducts } from "@/features/invoices/services/invoice.service";
-import { getErrorMessage } from "@/lib/axios";
-import { formatMoney, formatQuantity } from "@/lib/format";
-import { computeBilledQuantity, DIMENSION_UNITS, isAreaUnit, UNIT_LABELS, type InventoryUnit } from "@/lib/glass";
+import { getErrorMessage, getFieldError } from "@/lib/axios";
+import { formatDateOnly, formatQuantity } from "@/lib/format";
 import { computeInvoiceTotals, computeLineTotal } from "@/lib/invoice-math";
 import { d } from "@/lib/money";
 import { todayInput, useDebounced } from "@/lib/use-debounced";
 import { queryKeys } from "@/query/query-keys";
 import type { InvoiceDto } from "@/lib/types";
+
+const INVOICE_NOTES = "Thank you for your business. Please check the goods at the time of delivery.";
+const INVOICE_TERMS = "Payment is due on delivery. Goods once sold will not be taken back. E. & O.E.";
 
 type Line = {
   key: string;
@@ -27,22 +32,12 @@ type Line = {
   description: string;
   sourceType: "STOCK" | "OUTSIDE_PURCHASE";
   quantity: string;
-  unit: InventoryUnit;
-  width: string;
-  height: string;
-  dimensionUnit: "MM" | "CM" | "IN" | "FT" | "M";
-  pieceCount: string;
   unitPrice: string;
-  discountAmount: string;
-  purchaseCost: string;
-  supplierName: string;
-  supplierReference: string;
-  purchaseNotes: string;
   available: string | null;
 };
 
 function blankLine(): Line {
-  return { key: crypto.randomUUID(), productId: "", itemName: "", description: "", sourceType: "STOCK", quantity: "1", unit: "SQ_FT", width: "", height: "", dimensionUnit: "IN", pieceCount: "1", unitPrice: "0", discountAmount: "0", purchaseCost: "", supplierName: "", supplierReference: "", purchaseNotes: "", available: null };
+  return { key: crypto.randomUUID(), productId: "", itemName: "", description: "", sourceType: "STOCK", quantity: "1", unitPrice: "0", available: null };
 }
 
 function fromInvoice(invoice: InvoiceDto): Line[] {
@@ -53,17 +48,7 @@ function fromInvoice(invoice: InvoiceDto): Line[] {
     description: line.description ?? "",
     sourceType: line.sourceType,
     quantity: line.quantity,
-    unit: line.unit,
-    width: line.width ?? "",
-    height: line.height ?? "",
-    dimensionUnit: (line.dimensionUnit as Line["dimensionUnit"]) || "IN",
-    pieceCount: line.pieceCount?.toString() ?? "",
     unitPrice: line.unitPrice,
-    discountAmount: line.discountAmount,
-    purchaseCost: line.purchaseCost ?? "",
-    supplierName: line.supplierName ?? "",
-    supplierReference: line.supplierReference ?? "",
-    purchaseNotes: line.purchaseNotes ?? "",
     available: null,
   }));
 }
@@ -72,24 +57,41 @@ export function InvoiceEditor({ invoice }: { invoice?: InvoiceDto }) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const settings = useQuery({ queryKey: queryKeys.settings.current, queryFn: getInvoiceSettings });
-  const [customerId, setCustomerId] = useState(invoice?.customerId ?? "");
-  const [customerLabel, setCustomerLabel] = useState(invoice ? `${invoice.customerName} · ${invoice.customerPhone}` : "");
-  const [customerSearch, setCustomerSearch] = useState("");
+  const [customer, setCustomer] = useState<{ id: string; name: string; phone: string; address: string | null } | null>(
+    invoice ? { id: invoice.customerId, name: invoice.customerName, phone: invoice.customerPhone, address: invoice.customerAddress } : null,
+  );
+  const [customerSearch, setCustomerSearch] = useState(invoice ? `${invoice.customerName} · ${invoice.customerPhone}` : "");
   const [invoiceDate, setInvoiceDate] = useState(invoice ? invoice.invoiceDate.slice(0, 10) : todayInput());
-  const [dueDate, setDueDate] = useState(invoice?.dueDate?.slice(0, 10) ?? "");
-  const [discountAmount, setDiscountAmount] = useState(invoice?.discountAmount ?? "0");
-  const [notes, setNotes] = useState(invoice?.notes ?? "");
-  const [terms, setTerms] = useState(invoice?.terms ?? "");
+  const [notes, setNotes] = useState(invoice?.notes ?? INVOICE_NOTES);
+  const [terms, setTerms] = useState(invoice?.terms ?? INVOICE_TERMS);
   const [lines, setLines] = useState<Line[]>(invoice ? fromInvoice(invoice) : [blankLine()]);
   const [customerOpen, setCustomerOpen] = useState(false);
   const debouncedCustomer = useDebounced(customerSearch);
-  const customers = useQuery({ queryKey: queryKeys.customers.list({ debouncedCustomer, picker: true }), queryFn: () => searchCustomers(debouncedCustomer), enabled: debouncedCustomer.length > 0 });
-
-  const preview = useMemo(() => previewTotals(lines, discountAmount, settings.data?.taxEnabled ?? false, settings.data?.taxRate ?? "0"), [lines, discountAmount, settings.data]);
+  const customerLabel = customer ? `${customer.name} · ${customer.phone}` : "";
+  const customerQuery = customerSearch.trim();
+  const searchingCustomers = customerQuery.length > 0 && customerQuery !== customerLabel;
+  const customers = useQuery({ queryKey: queryKeys.customers.list({ debouncedCustomer, picker: true }), queryFn: () => searchCustomers(debouncedCustomer), enabled: searchingCustomers && debouncedCustomer.length > 0 });
+  const preview = useMemo(() => previewTotals(lines, settings.data?.taxEnabled ?? false, settings.data?.taxRate ?? "0"), [lines, settings.data]);
+  const paid = invoice?.amountPaid ?? "0.00";
+  const sheetLines = useMemo(() => lines.map((line) => {
+    const quantity = enteredQuantity(line)?.toString() ?? null;
+    const detail = [
+      line.description,
+      line.sourceType === "OUTSIDE_PURCHASE" ? "Purchased externally" : "",
+    ].filter(Boolean).join("\n");
+    return {
+      id: line.key,
+      quantityLabel: quantity ? formatQuantity(quantity) : "—",
+      itemName: line.itemName.trim() || "—",
+      detail,
+      rate: moneyLabel(line.unitPrice || "0"),
+      amount: moneyLabel(lineAmount(line)),
+    };
+  }), [lines]);
 
   const save = useMutation({
     mutationFn: async (issue: boolean) => {
-      const saved = await saveInvoice(invoice?.id ?? null, payload(customerId, invoiceDate, dueDate, discountAmount, notes, terms, lines));
+      const saved = await saveInvoice(invoice?.id ?? null, payload(customer?.id ?? "", invoiceDate, notes, terms, lines));
       if (!issue) return saved;
       try {
         return await issueInvoice(saved.id);
@@ -108,25 +110,37 @@ export function InvoiceEditor({ invoice }: { invoice?: InvoiceDto }) {
   });
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <PageHeader title={invoice ? invoice.invoiceNumber ?? "Edit draft" : "New invoice"} description="Choose the source of every line. Shop stock is deducted only when you issue the invoice." />
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(22rem,0.9fr)]">
+      <div className="space-y-6">
       <section className="surface-card space-y-4 p-5">
         <div className="flex flex-wrap items-end justify-between gap-3">
-          <Field label="Customer" htmlFor="customer-search"><Input id="customer-search" value={customerSearch} placeholder={customerLabel || "Search name or phone"} onChange={(event) => setCustomerSearch(event.target.value)} /></Field>
-          <Button type="button" variant="outline" onClick={() => setCustomerOpen(true)}>Add customer</Button>
-        </div>
-        {customerLabel ? <p className="text-sm">Selected: {customerLabel}</p> : null}
-        <div className="space-y-1">
-          {customers.data?.items.map((customer) => (
-            <button type="button" key={customer.id} className="block w-full rounded-md px-3 py-2 text-left text-sm hover:bg-muted" onClick={() => { setCustomerId(customer.id); setCustomerLabel(`${customer.name} · ${customer.phone}`); setCustomerSearch(""); }}>
-              {customer.name} · {customer.phone}
-            </button>
-          ))}
+          <div className="min-w-0 flex-1">
+            <Field label="Customer" htmlFor="customer-search">
+              <SearchSelect
+                id="customer-search"
+                value={customerSearch}
+                placeholder="Search name or phone"
+                onChange={(value) => {
+                  setCustomerSearch(value);
+                  if (value.trim() !== customerLabel) setCustomer(null);
+                }}
+                loading={searchingCustomers && (customerQuery !== debouncedCustomer || customers.isFetching)}
+                options={(customers.data?.items ?? []).map((item) => ({ id: item.id, label: item.name, detail: item.phone }))}
+                onSelect={(option) => {
+                  const selected = customers.data?.items.find((item) => item.id === option.id);
+                  if (!selected) return;
+                  setCustomer({ id: selected.id, name: selected.name, phone: selected.phone, address: selected.address });
+                  setCustomerSearch(`${selected.name} · ${selected.phone}`);
+                }}
+              />
+            </Field>
+          </div>
+          <Button type="button" variant="primary" size="sm" onClick={() => setCustomerOpen(true)}>Add customer</Button>
         </div>
         <div className="grid gap-4 md:grid-cols-3">
           <Field label="Invoice date" htmlFor="invoice-date"><Input id="invoice-date" type="date" value={invoiceDate} onChange={(event) => setInvoiceDate(event.target.value)} /></Field>
-          <Field label="Due date" htmlFor="due-date"><Input id="due-date" type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} /></Field>
-          <Field label="Invoice discount" htmlFor="discount"><Input id="discount" inputMode="decimal" value={discountAmount} onChange={(event) => setDiscountAmount(event.target.value)} /></Field>
         </div>
       </section>
       <div className="space-y-4">
@@ -135,12 +149,6 @@ export function InvoiceEditor({ invoice }: { invoice?: InvoiceDto }) {
         ))}
         <Button type="button" variant="outline" onClick={() => setLines((current) => [...current, blankLine()])}>Add line</Button>
       </div>
-      <section className="surface-card space-y-2 p-5 text-sm">
-        <Total label="Subtotal" value={preview.subtotal} currency={settings.data?.currency} />
-        <Total label="Discount" value={preview.discount} currency={settings.data?.currency} />
-        {settings.data?.taxEnabled ? <Total label={settings.data.taxLabel} value={preview.tax} currency={settings.data.currency} /> : null}
-        <Total label="Total" value={preview.total} currency={settings.data?.currency} strong />
-      </section>
       <div className="grid gap-4 md:grid-cols-2">
         <Field label="Notes" htmlFor="notes"><Textarea id="notes" value={notes} onChange={(event) => setNotes(event.target.value)} /></Field>
         <Field label="Terms" htmlFor="terms"><Textarea id="terms" value={terms} onChange={(event) => setTerms(event.target.value)} /></Field>
@@ -149,66 +157,81 @@ export function InvoiceEditor({ invoice }: { invoice?: InvoiceDto }) {
         <Button variant="outline" loading={save.isPending} onClick={() => save.mutate(false)}>Save draft</Button>
         <Button loading={save.isPending} onClick={() => save.mutate(true)}>Issue invoice</Button>
       </div>
-      <NewCustomerDialog open={customerOpen} onOpenChange={setCustomerOpen} onCreated={(customer) => { setCustomerId(customer.id); setCustomerLabel(`${customer.name} · ${customer.phone}`); }} />
+      </div>
+      <aside className="lg:sticky lg:top-4 lg:max-h-[calc(100dvh-6rem)] lg:overflow-auto">
+        <InvoiceSheet
+          businessName={settings.data?.businessName ?? ""}
+          address={settings.data?.address}
+          phone={settings.data?.phone}
+          logoSrc={settings.data?.hasLogo ? "/api/settings/logo" : null}
+          serial={invoice?.invoiceNumber ?? "Draft"}
+          date={invoiceDate ? formatDateOnly(invoiceDate) : "—"}
+          customer={customer ? [customer.name, customer.phone, customer.address].filter(Boolean).join(" · ") : "—"}
+          lines={sheetLines}
+          subtotal={moneyLabel(preview.subtotal)}
+          taxLabel={settings.data?.taxEnabled ? settings.data.taxLabel : null}
+          tax={settings.data?.taxEnabled ? moneyLabel(preview.tax) : null}
+          total={moneyLabel(preview.total)}
+          paid={moneyLabel(paid)}
+          balance={moneyLabel(balanceAmount(preview.total, paid))}
+          notes={notes}
+          terms={terms}
+        />
+      </aside>
+      </div>
+      <NewCustomerDialog open={customerOpen} onOpenChange={setCustomerOpen} onCreated={(created) => { setCustomer({ id: created.id, name: created.name, phone: created.phone, address: created.address }); setCustomerSearch(`${created.name} · ${created.phone}`); }} />
     </div>
   );
 }
 
 function LineEditor({ line, onChange, onRemove, index }: { line: Line; onChange: (line: Line) => void; onRemove: () => void; index: number }) {
-  const [search, setSearch] = useState("");
-  const debounced = useDebounced(search);
+  const typed = line.itemName.trim();
+  const debounced = useDebounced(typed);
   const products = useQuery({ queryKey: queryKeys.products.list({ debounced, picker: index }), queryFn: () => searchProducts(debounced), enabled: debounced.length > 0 });
-  const billed = billedQuantity(line);
-  const short = line.sourceType === "STOCK" && line.available != null && billed != null && d(billed).gt(line.available);
+  const catalog = products.data?.items ?? [];
+  useEffect(() => {
+    if (!typed || typed !== debounced || products.isFetching) return;
+    const match = catalog.find((product) => product.name.trim().toLowerCase() === typed.toLowerCase());
+    if (!match || match.id === line.productId) return;
+    onChange({ ...line, productId: match.id, itemName: match.name, unitPrice: match.defaultSellingPrice, available: match.stockQuantity });
+  }, [catalog, debounced, line, onChange, products.isFetching, typed]);
+  const quantity = enteredQuantity(line);
+  const short = line.sourceType === "STOCK" && line.available != null && quantity != null && quantity.gt(line.available);
+  const customName = line.sourceType === "STOCK" && typed.length > 0 && !line.productId && typed === debounced && !products.isFetching;
   return (
     <section className="surface-card space-y-4 p-5">
-      <div className="flex items-center justify-between"><h2 className="text-base font-semibold">Line {index + 1}</h2><Button type="button" variant="ghost" onClick={onRemove}>Remove</Button></div>
+      <div className="flex items-center justify-between"><h2 className="text-base font-semibold">Line {index + 1}</h2><Button type="button" variant="destructive" size="sm" onClick={onRemove}>Remove</Button></div>
       <InvoiceSourcePicker source={line.sourceType} onChange={(sourceType) => onChange({ ...line, sourceType })} />
-      <Field label="Product" htmlFor={`product-${line.key}`}><Input id={`product-${line.key}`} value={search} placeholder={line.itemName || "Search catalog or type a custom name below"} onChange={(event) => setSearch(event.target.value)} /></Field>
-      <div className="space-y-1">
-        {products.data?.items.map((product) => (
-          <button type="button" key={product.id} className="block w-full rounded-md px-3 py-2 text-left text-sm hover:bg-muted" onClick={() => { onChange({ ...line, productId: product.id, itemName: product.name, unit: product.inventoryUnit, unitPrice: product.defaultSellingPrice, available: product.stockQuantity }); setSearch(""); }}>
-            {product.name} · {formatQuantity(product.stockQuantity)} {UNIT_LABELS[product.inventoryUnit]} available
-          </button>
-        ))}
-      </div>
+      <Field label="Product" htmlFor={`product-${line.key}`}>
+        <SearchSelect
+          id={`product-${line.key}`}
+          value={line.itemName}
+          placeholder="Search the catalog or type an item name"
+          onChange={(value) => onChange({ ...line, itemName: value, productId: "", available: null })}
+          loading={typed.length > 0 && (typed !== debounced || products.isFetching)}
+          options={catalog.map((product) => ({ id: product.id, label: product.name, detail: `${formatQuantity(product.stockQuantity)} available` }))}
+          onSelect={(option) => {
+            const product = catalog.find((item) => item.id === option.id);
+            if (!product) return;
+            onChange({ ...line, productId: product.id, itemName: product.name, unitPrice: product.defaultSellingPrice, available: product.stockQuantity });
+          }}
+        />
+      </Field>
+      {customName ? <p className="text-sm text-muted-foreground">No inventory product uses this name. Pick a listed product for shop stock, or mark the line as purchased externally.</p> : null}
       <div className="grid gap-4 md:grid-cols-2">
-        <Field label="Item name" htmlFor={`name-${line.key}`}><Input id={`name-${line.key}`} value={line.itemName} onChange={(event) => onChange({ ...line, itemName: event.target.value })} /></Field>
         <Field label="Unit price" htmlFor={`price-${line.key}`}><Input id={`price-${line.key}`} inputMode="decimal" value={line.unitPrice} onChange={(event) => onChange({ ...line, unitPrice: event.target.value })} /></Field>
         <Field label="Quantity" htmlFor={`qty-${line.key}`}><Input id={`qty-${line.key}`} inputMode="decimal" value={line.quantity} onChange={(event) => onChange({ ...line, quantity: event.target.value })} /></Field>
-        <Field label="Line discount" htmlFor={`disc-${line.key}`}><Input id={`disc-${line.key}`} inputMode="decimal" value={line.discountAmount} onChange={(event) => onChange({ ...line, discountAmount: event.target.value })} /></Field>
       </div>
-      {isAreaUnit(line.unit) ? (
-        <div className="grid gap-4 md:grid-cols-4">
-          <Field label="Width" htmlFor={`w-${line.key}`}><Input id={`w-${line.key}`} value={line.width} onChange={(event) => onChange({ ...line, width: event.target.value })} /></Field>
-          <Field label="Height" htmlFor={`h-${line.key}`}><Input id={`h-${line.key}`} value={line.height} onChange={(event) => onChange({ ...line, height: event.target.value })} /></Field>
-          <Field label="Dimension unit" htmlFor={`du-${line.key}`}>
-            <select id={`du-${line.key}`} className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm" value={line.dimensionUnit} onChange={(event) => onChange({ ...line, dimensionUnit: event.target.value as Line["dimensionUnit"] })}>
-              {DIMENSION_UNITS.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
-            </select>
-          </Field>
-          <Field label="Pieces" htmlFor={`pc-${line.key}`}><Input id={`pc-${line.key}`} value={line.pieceCount} onChange={(event) => onChange({ ...line, pieceCount: event.target.value })} /></Field>
-        </div>
-      ) : null}
-      {line.unit === "SHEET" ? <p className="text-sm text-muted-foreground">Sheet stock is counted in whole sheets. Dimensions are descriptive and do not change the quantity.</p> : null}
-      {billed ? <p className="text-sm">Billed quantity: {formatQuantity(billed)} {UNIT_LABELS[line.unit]}</p> : null}
-      {line.sourceType === "STOCK" && line.available != null ? <p className={short ? "text-sm text-destructive" : "text-sm text-muted-foreground"}>Available {formatQuantity(line.available)} {UNIT_LABELS[line.unit]}{short ? ` · short by ${formatQuantity(d(billed ?? line.quantity).minus(line.available))}` : ""}</p> : null}
-      {line.sourceType === "OUTSIDE_PURCHASE" ? (
-        <div className="grid gap-4 md:grid-cols-2">
-          <p className="md:col-span-2 text-sm font-medium">Purchased externally</p>
-          <Field label="Supplier" htmlFor={`sup-${line.key}`}><Input id={`sup-${line.key}`} value={line.supplierName} onChange={(event) => onChange({ ...line, supplierName: event.target.value })} /></Field>
-          <Field label="Supplier reference" htmlFor={`ref-${line.key}`}><Input id={`ref-${line.key}`} value={line.supplierReference} onChange={(event) => onChange({ ...line, supplierReference: event.target.value })} /></Field>
-          <Field label="Purchase cost per unit" htmlFor={`cost-${line.key}`}><Input id={`cost-${line.key}`} inputMode="decimal" value={line.purchaseCost} onChange={(event) => onChange({ ...line, purchaseCost: event.target.value })} /></Field>
-          <Field label="Purchase notes" htmlFor={`pnotes-${line.key}`}><Input id={`pnotes-${line.key}`} value={line.purchaseNotes} onChange={(event) => onChange({ ...line, purchaseNotes: event.target.value })} /></Field>
-        </div>
-      ) : null}
+      {quantity ? <p className="text-sm">Billed quantity: {formatQuantity(quantity.toString())}</p> : null}
+      {line.sourceType === "STOCK" && line.available != null ? <p className={short ? "text-sm text-destructive" : "text-sm text-muted-foreground"}>Available {formatQuantity(line.available)}{short && quantity ? ` · short by ${formatQuantity(quantity.minus(line.available))}` : ""}</p> : null}
     </section>
   );
 }
 
-function NewCustomerDialog({ open, onOpenChange, onCreated }: { open: boolean; onOpenChange: (open: boolean) => void; onCreated: (customer: { id: string; name: string; phone: string }) => void }) {
+function NewCustomerDialog({ open, onOpenChange, onCreated }: { open: boolean; onOpenChange: (open: boolean) => void; onCreated: (customer: { id: string; name: string; phone: string; address: string | null }) => void }) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [errors, setErrors] = useState<{ name?: string; phone?: string }>({});
   const mutation = useMutation({
     mutationFn: () => createCustomerInline({ name, phone }),
     onSuccess: (customer) => {
@@ -217,57 +240,85 @@ function NewCustomerDialog({ open, onOpenChange, onCreated }: { open: boolean; o
       onOpenChange(false);
       setName("");
       setPhone("");
+      setErrors({});
     },
-    onError: (error) => toast.error(getErrorMessage(error, "The customer could not be added.")),
+    onError: (error) => {
+      setErrors({ name: getFieldError(error, "name"), phone: getFieldError(error, "phone") });
+      toast.error(getErrorMessage(error, "The customer could not be added."));
+    },
   });
+  function save() {
+    const parsed = customerSchema.safeParse({ name, phone });
+    if (!parsed.success) {
+      const fields = parsed.error.flatten().fieldErrors;
+      setErrors({ name: fields.name?.[0], phone: fields.phone?.[0] });
+      return;
+    }
+    setErrors({});
+    mutation.mutate();
+  }
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent title="New customer" description="The invoice draft stays open.">
         <div className="space-y-4">
-          <Field label="Name" htmlFor="new-name"><Input id="new-name" value={name} onChange={(event) => setName(event.target.value)} /></Field>
-          <Field label="Phone" htmlFor="new-phone"><Input id="new-phone" value={phone} onChange={(event) => setPhone(event.target.value)} /></Field>
-          <Button loading={mutation.isPending} onClick={() => mutation.mutate()}>Save customer</Button>
+          <Field label="Name" htmlFor="new-name" error={errors.name}><Input id="new-name" value={name} onChange={(event) => { setName(event.target.value); setErrors((current) => ({ ...current, name: undefined })); }} /></Field>
+          <Field label="Phone" htmlFor="new-phone" error={errors.phone}><Input id="new-phone" value={phone} onChange={(event) => { setPhone(event.target.value); setErrors((current) => ({ ...current, phone: undefined })); }} /></Field>
+          <Button type="button" loading={mutation.isPending} onClick={save}>Save customer</Button>
         </div>
       </DialogContent>
     </Dialog>
   );
 }
 
-function billedQuantity(line: Line) {
+function lineAmount(line: Line) {
+  const quantity = enteredQuantity(line);
+  if (!quantity) return "0.00";
   try {
-    return computeBilledQuantity({
-      unit: line.unit,
-      quantity: line.quantity || "0",
-      width: line.width || null,
-      height: line.height || null,
-      dimensionUnit: line.dimensionUnit,
-      pieceCount: line.pieceCount ? Number(line.pieceCount) : null,
-    }).toString();
+    return computeLineTotal(quantity.toString(), line.unitPrice || "0", "0").toFixed(2);
+  } catch {
+    return "0.00";
+  }
+}
+
+function balanceAmount(total: string, paid: string) {
+  try {
+    const value = d(total || "0").minus(d(paid || "0"));
+    return value.isNegative() ? "0.00" : value.toFixed(2);
+  } catch {
+    return "0.00";
+  }
+}
+
+function enteredQuantity(line: Line) {
+  try {
+    const quantity = d(line.quantity || "0");
+    if (!quantity.isFinite() || quantity.lte(0)) return null;
+    return quantity;
   } catch {
     return null;
   }
 }
 
-function previewTotals(lines: Line[], discount: string, taxEnabled: boolean, taxRate: string) {
+function previewTotals(lines: Line[], taxEnabled: boolean, taxRate: string) {
   try {
     const lineTotals = lines.map((line) => {
-      const quantity = billedQuantity(line);
+      const quantity = enteredQuantity(line);
       if (!quantity) return "0";
-      return computeLineTotal(quantity, line.unitPrice || "0", line.discountAmount || "0").toString();
+      return computeLineTotal(quantity.toString(), line.unitPrice || "0", "0").toString();
     });
-    const totals = computeInvoiceTotals({ lineTotals, invoiceDiscount: discount || "0", taxEnabled, taxRatePercent: taxRate });
-    return { subtotal: totals.subtotal.toFixed(2), discount: totals.discountAmount.toFixed(2), tax: totals.taxAmount.toFixed(2), total: totals.totalAmount.toFixed(2) };
+    const totals = computeInvoiceTotals({ lineTotals, invoiceDiscount: "0", taxEnabled, taxRatePercent: taxRate });
+    return { subtotal: totals.subtotal.toFixed(2), tax: totals.taxAmount.toFixed(2), total: totals.totalAmount.toFixed(2) };
   } catch {
-    return { subtotal: "0.00", discount: "0.00", tax: "0.00", total: "0.00" };
+    return { subtotal: "0.00", tax: "0.00", total: "0.00" };
   }
 }
 
-function payload(customerId: string, invoiceDate: string, dueDate: string, discountAmount: string, notes: string, terms: string, lines: Line[]) {
+function payload(customerId: string, invoiceDate: string, notes: string, terms: string, lines: Line[]) {
   return {
     customerId,
     invoiceDate,
-    dueDate,
-    discountAmount,
+    dueDate: "",
+    discountAmount: "0",
     notes,
     terms,
     lines: lines.map((line) => ({
@@ -275,22 +326,19 @@ function payload(customerId: string, invoiceDate: string, dueDate: string, disco
       itemName: line.itemName,
       description: line.description,
       sourceType: line.sourceType,
-      quantity: billedQuantity(line) || line.quantity,
-      unit: line.unit,
-      width: line.width || null,
-      height: line.height || null,
-      dimensionUnit: line.width && line.height ? line.dimensionUnit : null,
-      pieceCount: line.pieceCount ? Number(line.pieceCount) : null,
+      quantity: line.quantity,
+      unit: "SQ_FT",
+      width: null,
+      height: null,
+      dimensionUnit: null,
+      pieceCount: null,
       unitPrice: line.unitPrice,
-      discountAmount: line.discountAmount,
-      purchaseCost: line.purchaseCost || null,
-      supplierName: line.supplierName,
-      supplierReference: line.supplierReference,
-      purchaseNotes: line.purchaseNotes,
+      discountAmount: "0",
+      purchaseCost: null,
+      supplierName: "",
+      supplierReference: "",
+      purchaseNotes: "",
     })),
   };
 }
 
-function Total({ label, value, currency = "PKR", strong }: { label: string; value: string; currency?: string; strong?: boolean }) {
-  return <div className={strong ? "flex justify-between text-base font-semibold" : "flex justify-between"}><span>{label}</span><span>{formatMoney(value, currency)}</span></div>;
-}

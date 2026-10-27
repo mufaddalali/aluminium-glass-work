@@ -30,7 +30,19 @@ api.interceptors.response.use(
 );
 
 export function getErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof ApiClientError) {
+    const details = error.details as { formErrors?: string[]; fieldErrors?: Record<string, string[] | undefined> } | null;
+    const messages = [...(details?.formErrors ?? []), ...Object.values(details?.fieldErrors ?? {}).flat()].filter((message): message is string => Boolean(message));
+    const unique = [...new Set(messages)];
+    if (unique.length) return unique.slice(0, 4).join(" ");
+  }
   return error instanceof Error && error.message ? error.message : fallback;
+}
+
+export function getFieldError(error: unknown, field: string) {
+  if (!(error instanceof ApiClientError)) return undefined;
+  const details = error.details as { fieldErrors?: Record<string, string[] | undefined> } | null;
+  return details?.fieldErrors?.[field]?.[0];
 }
 
 export async function unwrap<T>(request: Promise<{ data: { data: T } }>) {

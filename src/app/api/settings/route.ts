@@ -17,8 +17,6 @@ export const PATCH = withApi(async (request: Request) => {
     address: input.address ?? null,
     phone: input.phone ?? null,
     email: input.email ?? null,
-    defaultTerms: input.defaultTerms ?? null,
-    defaultNotes: input.defaultNotes ?? null,
     paymentTermDays: input.paymentTermDays ?? null,
   }));
 });

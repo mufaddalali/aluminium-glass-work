@@ -19,29 +19,12 @@ export type PageResult<T> = {
   meta: PageMeta;
 };
 
-export type CategoryDto = {
-  id: string;
-  name: string;
-  isActive: boolean;
-};
-
 export type ProductDto = {
   id: string;
-  sku: string | null;
   name: string;
-  categoryId: string;
-  categoryName: string;
   description: string | null;
-  brand: string | null;
-  colour: string | null;
-  thickness: string | null;
-  inventoryUnit: InventoryUnit;
   stockQuantity: string;
-  minimumStockLevel: string;
-  defaultCostPrice: string | null;
   defaultSellingPrice: string;
-  isActive: boolean;
-  stockStatus: "OUT" | "LOW" | "OK";
   updatedAt: string;
 };
 
@@ -189,11 +172,9 @@ export type DashboardDto = {
   paymentsThisMonth: string;
   outstandingReceivables: string;
   issuedInvoiceCount: number;
-  lowStockCount: number;
   outOfStockCount: number;
   pendingPayments: Array<InvoiceListItem & { overdue: boolean }>;
   recentInvoices: InvoiceListItem[];
   recentPayments: PaymentDto[];
-  lowStock: ProductDto[];
   salesTrend: Array<{ month: string; label: string; total: string }>;
 };

@@ -7,7 +7,8 @@ export function formatMoney(amount: Amount, currency = "PKR") {
   const sign = value.isNegative() ? "-" : "";
   const [whole, fraction] = value.abs().toFixed(2).split(".");
   const grouped = (whole ?? "0").replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  return `${sign}${currency} ${grouped}.${fraction ?? "00"}`;
+  const number = `${grouped}.${fraction ?? "00"}`;
+  return currency ? `${sign}${currency} ${number}` : `${sign}${number}`;
 }
 
 export function formatQuantity(amount: Amount) {

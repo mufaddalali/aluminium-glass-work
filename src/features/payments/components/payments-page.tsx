@@ -8,6 +8,8 @@ import { DataTable } from "@/components/data/data-table";
 import { ErrorState } from "@/components/feedback/states";
 import { PageHeader, Pagination } from "@/components/layout/page-header";
 import { Input } from "@/components/ui/input";
+import { RowActions } from "@/components/data/row-actions";
+import { SearchSelect } from "@/components/ui/search-select";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { listPayments } from "@/features/invoices/services/invoice.service";
 import { formatDateOnly, formatMoney } from "@/lib/format";
@@ -33,12 +35,13 @@ export function PaymentsPage() {
     { header: "Method", cell: ({ row }) => row.original.paymentMethod.replaceAll("_", " ") },
     { header: "Amount", cell: ({ row }) => formatMoney(row.original.amount) },
     { header: "Reference", cell: ({ row }) => row.original.reference || "—" },
+    { header: "Actions", cell: ({ row }) => <RowActions viewHref={`/invoices/${row.original.invoiceId}`} /> },
   ];
   return (
     <div className="space-y-8">
       <PageHeader title="Payments" description="Record a receipt from the invoice. Partial payments leave the remaining balance outstanding." />
-      <div className="surface-card grid gap-3 p-4 md:grid-cols-3">
-        <Input aria-label="Search payments" placeholder="Customer, invoice, or reference" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} />
+      <div className="grid gap-2 md:grid-cols-3">
+        <SearchSelect ariaLabel="Search payments" placeholder="Customer, invoice, or reference" value={search} onChange={(value) => { setSearch(value); setPage(1); }} loading={search !== debounced || payments.isFetching} />
         <Input aria-label="From" type="date" value={from} onChange={(event) => { setFrom(event.target.value); setPage(1); }} />
         <Input aria-label="To" type="date" value={to} onChange={(event) => { setTo(event.target.value); setPage(1); }} />
       </div>

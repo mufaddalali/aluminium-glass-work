@@ -2,7 +2,6 @@ export const queryKeys = {
   auth: { me: ["auth", "me"] as const },
   dashboard: { summary: ["dashboard"] as const },
   settings: { current: ["settings"] as const },
-  categories: { all: ["categories"] as const },
   products: {
     all: ["products"] as const,
     lists: () => [...queryKeys.products.all, "list"] as const,

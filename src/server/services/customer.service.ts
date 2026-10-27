@@ -74,6 +74,27 @@ export async function updateCustomer(id: string, input: CustomerInput) {
   return toCustomerDto(customer, balances.get(id));
 }
 
+export async function deleteCustomers(ids: string[]) {
+  const unique = [...new Set(ids)];
+  const customers = await prisma.customer.findMany({
+    where: { id: { in: unique } },
+    select: { id: true, _count: { select: { invoices: true } } },
+  });
+  const deletable = customers.filter((customer) => customer._count.invoices === 0).map((customer) => customer.id);
+  if (deletable.length > 0) await prisma.customer.deleteMany({ where: { id: { in: deletable } } });
+  return { deleted: deletable.length, blocked: customers.length - deletable.length };
+}
+
+export async function deleteCustomer(id: string) {
+  const existing = await prisma.customer.findUnique({ where: { id }, include: { _count: { select: { invoices: true } } } });
+  if (!existing) throw new ApiError(404, "NOT_FOUND", "Customer not found.");
+  if (existing._count.invoices > 0) {
+    throw new ApiError(409, "CUSTOMER_IN_USE", "This customer has invoices and cannot be deleted.");
+  }
+  await prisma.customer.delete({ where: { id } });
+  return { id };
+}
+
 export async function archiveCustomer(id: string) {
   const existing = await prisma.customer.findUnique({ where: { id } });
   if (!existing) throw new ApiError(404, "NOT_FOUND", "Customer not found.");

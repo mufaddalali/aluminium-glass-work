@@ -135,39 +135,18 @@ model Customer {
   @@index([isActive])
 }
 
-model ProductCategory {
-  id        String    @id @default(cuid())
-  name      String    @unique
-  isActive  Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  products  Product[]
-}
-
 model Product {
-  id                  String           @id @default(cuid())
-  sku                 String?          @unique
+  id                  String          @id @default(cuid())
   name                String
-  categoryId          String
   description         String?
-  brand               String?
-  colour              String?
-  thickness           String?
-  inventoryUnit       InventoryUnit
-  stockQuantity       Decimal          @default(0) @db.Decimal(14, 3)
-  minimumStockLevel   Decimal          @default(0) @db.Decimal(14, 3)
-  defaultCostPrice    Decimal?         @db.Decimal(14, 2)
-  defaultSellingPrice Decimal          @default(0) @db.Decimal(14, 2)
-  isActive            Boolean          @default(true)
-  createdAt           DateTime         @default(now())
-  updatedAt           DateTime         @updatedAt
-  category            ProductCategory  @relation(fields: [categoryId], references: [id])
+  stockQuantity       Decimal         @default(0) @db.Decimal(14, 3)
+  defaultSellingPrice Decimal         @default(0) @db.Decimal(14, 2)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
   movements           StockMovement[]
   invoiceLines        InvoiceLine[]
 
   @@index([name])
-  @@index([categoryId])
-  @@index([isActive])
 }
 
 model StockMovement {

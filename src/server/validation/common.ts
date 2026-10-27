@@ -19,7 +19,7 @@ export const optionalText = (max: number) =>
   z.union([z.string().trim().max(max), z.null(), z.undefined()]).transform((value) => {
     const trimmed = typeof value === "string" ? value.trim() : "";
     return trimmed ? trimmed : null;
-  });
+  }).optional();
 
 export const requiredDecimal = z.string().trim().min(1, "Enter a number.");
 

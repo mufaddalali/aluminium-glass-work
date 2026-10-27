@@ -1,31 +1,15 @@
 import { z } from "zod";
-import { optionalText, pagingSchema, requiredDecimal, inventoryUnitSchema } from "@/server/validation/common";
-
-export { inventoryUnitSchema };
+import { optionalText, pagingSchema, requiredDecimal } from "@/server/validation/common";
 
 export const productSchema = z.object({
-  sku: optionalText(40),
   name: z.string().trim().min(1, "Enter a product name.").max(160),
-  categoryId: z.string().min(1, "Choose a category."),
-  description: optionalText(1000),
-  brand: optionalText(80),
-  colour: optionalText(80),
-  thickness: optionalText(40),
-  inventoryUnit: inventoryUnitSchema,
-  minimumStockLevel: requiredDecimal,
-  defaultCostPrice: optionalText(20),
+  quantity: requiredDecimal,
   defaultSellingPrice: requiredDecimal,
-  openingQuantity: optionalText(20),
+  description: optionalText(1000),
 });
 
 export const productListSchema = pagingSchema.extend({
-  categoryId: z.string().optional().or(z.literal("")),
-  active: z.enum(["true", "false", ""]).optional(),
-  stock: z.enum(["low", "out", "alert", ""]).optional(),
-});
-
-export const categorySchema = z.object({
-  name: z.string().trim().min(1, "Enter a category name.").max(80),
+  stock: z.enum(["out", ""]).optional(),
 });
 
 export const receiveStockSchema = z.object({

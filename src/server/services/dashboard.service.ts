@@ -2,7 +2,7 @@ import { netPaid, outstandingAmount } from "@/lib/invoice-math";
 import { money, moneyString } from "@/lib/money";
 import { startOfMonthOffset, startOfZonedMonth, zonedParts } from "@/lib/timezone";
 import type { DashboardDto, InvoiceListItem } from "@/lib/types";
-import { countStockAlerts, listProducts } from "@/server/services/inventory.service";
+import { countOutOfStock } from "@/server/services/inventory.service";
 import { listPayments, salesTrend, toListItem } from "@/server/services/invoice.service";
 import { ensureSettings } from "@/server/services/settings.service";
 import { prisma } from "@/server/db/prisma";
@@ -14,7 +14,7 @@ export async function getDashboard(): Promise<DashboardDto> {
   const timeZone = settings.timeZone;
   const start = startOfZonedMonth(new Date(), timeZone);
   const next = startOfMonthOffset(new Date(), timeZone, 1);
-  const [sales, paymentRows, openInvoices, alerts, lowStock, recentInvoices, recentPayments, trend, pending] = await Promise.all([
+  const [sales, paymentRows, openInvoices, outOfStockCount, recentInvoices, recentPayments, trend, pending] = await Promise.all([
     prisma.invoice.aggregate({
       where: { status: { in: [...SALES_STATUSES] }, issuedAt: { gte: start, lt: next } },
       _sum: { totalAmount: true },
@@ -28,8 +28,7 @@ export async function getDashboard(): Promise<DashboardDto> {
       where: { status: { in: ["ISSUED", "PARTIALLY_PAID"] } },
       select: { totalAmount: true, payments: { select: { amount: true, kind: true } } },
     }),
-    countStockAlerts(),
-    listProducts({ page: 1, pageSize: 6, active: true, stock: "alert", sort: "stock", dir: "asc" }),
+    countOutOfStock(),
     prisma.invoice.findMany({
       include: { customer: true, payments: true },
       orderBy: { createdAt: "desc" },
@@ -58,12 +57,10 @@ export async function getDashboard(): Promise<DashboardDto> {
     paymentsThisMonth: moneyString(paymentsThisMonth),
     outstandingReceivables: moneyString(outstanding),
     issuedInvoiceCount: sales._count,
-    lowStockCount: alerts.lowStockCount,
-    outOfStockCount: alerts.outOfStockCount,
+    outOfStockCount,
     pendingPayments: pending.map((invoice) => withOverdue(toListItem(invoice), timeZone)),
     recentInvoices: recentInvoices.map(toListItem),
     recentPayments: recentPayments.items,
-    lowStock: lowStock.items,
     salesTrend: trend,
   };
 }

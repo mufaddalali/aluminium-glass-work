@@ -1,5 +1,5 @@
 import { api, unwrap } from "@/lib/axios";
-import type { PageResult, ProductDto, CategoryDto, MovementDto, SettingsDto } from "@/lib/types";
+import type { PageResult, ProductDto, MovementDto, SettingsDto } from "@/lib/types";
 
 export function listProducts(params: Record<string, string | number | undefined>) {
   return unwrap(api.get<{ data: PageResult<ProductDto> }>("/products", { params }));
@@ -11,18 +11,6 @@ export function getProduct(id: string) {
 
 export function saveProduct(id: string | null, body: unknown) {
   return unwrap(id ? api.patch<{ data: ProductDto }>(`/products/${id}`, body) : api.post<{ data: ProductDto }>("/products", body));
-}
-
-export function archiveProduct(id: string) {
-  return unwrap(api.post<{ data: ProductDto }>(`/products/${id}/archive`));
-}
-
-export function listCategories() {
-  return unwrap(api.get<{ data: CategoryDto[] }>("/categories"));
-}
-
-export function createCategory(name: string) {
-  return unwrap(api.post<{ data: CategoryDto }>("/categories", { name }));
 }
 
 export function receiveStock(body: unknown) {

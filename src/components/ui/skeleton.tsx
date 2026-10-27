@@ -1,7 +1,7 @@
 import { cn } from "@/lib/cn";
 
 export function Skeleton({ className }: { className?: string }) {
-  return <div className={cn("skeleton-shimmer h-4 rounded-md", className)} />;
+  return <div className={cn("skeleton-shimmer h-4 rounded-xl", className)} />;
 }
 
 export function TableSkeleton({ rows = 6 }: { rows?: number }) {

@@ -15,6 +15,10 @@ export function saveCustomer(id: string | null, body: unknown) {
   return unwrap(id ? api.patch<{ data: CustomerDto }>(`/customers/${id}`, body) : api.post<{ data: CustomerDto }>("/customers", body));
 }
 
-export function archiveCustomer(id: string) {
-  return unwrap(api.post<{ data: CustomerDto }>(`/customers/${id}/archive`));
+export function deleteCustomer(id: string) {
+  return unwrap(api.delete<{ data: { id: string } }>(`/customers/${id}`));
+}
+
+export function deleteCustomers(ids: string[]) {
+  return unwrap(api.post<{ data: { deleted: number; blocked: number } }>("/customers/bulk-delete", { ids }));
 }

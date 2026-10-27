@@ -26,8 +26,9 @@ export function toErrorResponse(error: unknown) {
     );
   }
   if (error instanceof ZodError) {
+    const flattened = error.flatten();
     return NextResponse.json(
-      { error: { code: "VALIDATION", message: "Check the highlighted fields.", details: error.flatten() } },
+      { error: { code: "VALIDATION", message: validationMessage(flattened), details: flattened } },
       { status: 400 },
     );
   }
@@ -42,6 +43,12 @@ export function toErrorResponse(error: unknown) {
     { error: { code: "INTERNAL", message: "Something went wrong. Please try again.", details: null } },
     { status: 500 },
   );
+}
+
+function validationMessage(flattened: { formErrors: string[]; fieldErrors: Record<string, string[] | undefined> }) {
+  const messages = [...flattened.formErrors, ...Object.values(flattened.fieldErrors).flat()].filter((message): message is string => Boolean(message));
+  const unique = [...new Set(messages)];
+  return unique.slice(0, 4).join(" ") || "Check the highlighted fields.";
 }
 
 export function withApi<C = unknown>(handler: (request: Request, context: C) => Promise<Response>) {

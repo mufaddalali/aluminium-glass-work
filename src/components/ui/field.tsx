@@ -7,7 +7,7 @@ export function Label({ className, ...props }: LabelHTMLAttributes<HTMLLabelElem
 
 export function Field({ label, htmlFor, error, children }: { label: string; htmlFor?: string; error?: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-2">
+    <div className="w-full min-w-0 space-y-2">
       <Label htmlFor={htmlFor}>{label}</Label>
       {children}
       {error ? <p className="text-sm text-destructive">{error}</p> : null}

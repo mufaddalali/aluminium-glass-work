@@ -13,12 +13,12 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
 import { Input, Textarea } from "@/components/ui/input";
+import { MetricStrip } from "@/components/ui/metric";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { deleteDraft, getInvoice, getInvoiceSettings, issueInvoice, recordPayment, voidInvoice } from "@/features/invoices/services/invoice.service";
 import { getErrorMessage } from "@/lib/axios";
 import { formatDateOnly, formatMoney, formatQuantity } from "@/lib/format";
 import { d } from "@/lib/money";
-import { UNIT_LABELS } from "@/lib/glass";
 import { invoiceShareMessage, whatsAppLink } from "@/lib/whatsapp";
 import { todayInput } from "@/lib/use-debounced";
 import { queryKeys } from "@/query/query-keys";
@@ -47,8 +47,7 @@ export function InvoiceDetail({ id }: { id: string }) {
   if (invoice.isLoading) return <TableSkeleton />;
   if (!invoice.data) return <ErrorState onRetry={() => void invoice.refetch()} />;
   const item = invoice.data;
-  const currency = settings.data?.currency ?? "PKR";
-  const share = item.invoiceNumber ? whatsAppLink(item.customerPhone, currency, invoiceShareMessage({ businessName: settings.data?.businessName ?? "Invoice", invoiceNumber: item.invoiceNumber, currency, total: item.totalAmount, paid: item.amountPaid, outstanding: item.outstanding })) : null;
+  const share = item.invoiceNumber ? whatsAppLink(item.customerPhone, invoiceShareMessage({ businessName: settings.data?.businessName ?? "Invoice", invoiceNumber: item.invoiceNumber, total: formatMoney(item.totalAmount, ""), paid: formatMoney(item.amountPaid, ""), outstanding: formatMoney(item.outstanding, "") })) : null;
 
   return (
     <div className="space-y-8">
@@ -65,11 +64,11 @@ export function InvoiceDetail({ id }: { id: string }) {
           {item.status !== "DRAFT" && item.status !== "VOID" ? <Button variant="destructive" onClick={() => setVoidOpen(true)}>Void</Button> : null}
         </>
       } />
-      <div className="grid gap-4 md:grid-cols-3">
-        <div className="surface-card p-5"><p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Total</p><p className="mt-2 text-2xl font-semibold">{formatMoney(item.totalAmount, currency)}</p></div>
-        <div className="surface-card p-5"><p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Paid</p><p className="mt-2 text-2xl font-semibold">{formatMoney(item.amountPaid, currency)}</p></div>
-        <div className="surface-card p-5"><p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Outstanding</p><p className="mt-2 text-2xl font-semibold">{formatMoney(item.outstanding, currency)}</p></div>
-      </div>
+      <MetricStrip items={[
+        { label: "Total", value: formatMoney(item.totalAmount, "") },
+        { label: "Paid", value: formatMoney(item.amountPaid, "") },
+        { label: "Outstanding", value: formatMoney(item.outstanding, "") },
+      ]} />
       <section className="surface-card divide-y divide-border">
         {item.lines.map((line) => (
           <div key={line.id} className="space-y-1 p-5 text-sm">
@@ -77,17 +76,15 @@ export function InvoiceDetail({ id }: { id: string }) {
               <p className="font-medium">{line.itemName}</p>
               <StatusBadge status={line.sourceType} />
             </div>
-            <p className="text-muted-foreground">{formatQuantity(line.quantity)} {UNIT_LABELS[line.unit]} × {formatMoney(line.unitPrice, currency)}</p>
-            {line.width && line.height ? <p className="text-muted-foreground">{line.width} × {line.height} {line.dimensionUnit}{line.pieceCount ? ` · ${line.pieceCount} pieces` : ""}</p> : null}
-            {line.sourceType === "OUTSIDE_PURCHASE" ? <p>Purchased externally{line.supplierName ? ` · ${line.supplierName}` : ""}</p> : null}
-            <p className="text-end font-medium">{formatMoney(line.lineTotal, currency)}</p>
+            <p className="text-muted-foreground">{formatQuantity(line.quantity)} × {formatMoney(line.unitPrice, "")}</p>
+            <p className="text-end font-medium">{formatMoney(line.lineTotal, "")}</p>
           </div>
         ))}
       </section>
       <section className="surface-card p-5">
         <h2 className="text-lg font-semibold">Payments</h2>
         <div className="mt-4 space-y-3 text-sm">
-          {item.payments.map((payment) => <div key={payment.id} className="flex justify-between border-t border-border pt-3"><span>{payment.kind} · {payment.paymentMethod} · {formatDateOnly(payment.paymentDate)}</span><span>{formatMoney(payment.amount, currency)}</span></div>)}
+          {item.payments.map((payment) => <div key={payment.id} className="flex justify-between border-t border-border pt-3"><span>{payment.kind} · {payment.paymentMethod} · {formatDateOnly(payment.paymentDate)}</span><span>{formatMoney(payment.amount, "")}</span></div>)}
           {item.payments.length === 0 ? <p className="text-muted-foreground">No payments recorded.</p> : null}
         </div>
       </section>
@@ -122,7 +119,7 @@ function PaymentDialog({ open, onOpenChange, invoiceId, kind, onSaved }: { open:
           <Field label="Amount" htmlFor="pay-amount"><Input id="pay-amount" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} /></Field>
           <Field label="Date" htmlFor="pay-date"><Input id="pay-date" type="date" value={paymentDate} onChange={(event) => setPaymentDate(event.target.value)} /></Field>
           <Field label="Method" htmlFor="pay-method">
-            <select id="pay-method" className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm" value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}>
+            <select id="pay-method" className="control-glass h-11 w-full rounded-2xl px-3.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30" value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}>
               <option value="CASH">Cash</option><option value="BANK_TRANSFER">Bank transfer</option><option value="CARD">Card</option><option value="MOBILE_WALLET">Mobile wallet</option><option value="OTHER">Other</option>
             </select>
           </Field>

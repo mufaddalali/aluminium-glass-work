@@ -7,11 +7,16 @@ export const customerSchema = z.object({
   alternatePhone: optionalText(30),
   email: z
     .union([z.string().trim().min(1).email("Enter a valid email address."), z.literal(""), z.null(), z.undefined()])
-    .transform((value) => (value ? value : null)),
+    .transform((value) => (value ? value : null))
+    .optional(),
   address: optionalText(400),
   notes: optionalText(1000),
 });
 
 export const customerListSchema = pagingSchema.extend({
   active: z.enum(["true", "false", ""]).optional(),
+});
+
+export const deleteCustomersSchema = z.object({
+  ids: z.array(z.string().trim().min(1)).min(1, "Select at least one customer.").max(100),
 });

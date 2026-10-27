@@ -36,12 +36,9 @@ function SettingsForm({ initial, onSaved }: { initial: Awaited<ReturnType<typeof
       phone: initial.phone ?? "",
       email: initial.email ?? "",
       invoicePrefix: initial.invoicePrefix,
-      currency: initial.currency,
       taxEnabled: initial.taxEnabled,
       taxRate: initial.taxRate,
       taxLabel: initial.taxLabel,
-      defaultTerms: initial.defaultTerms ?? "",
-      defaultNotes: initial.defaultNotes ?? "",
       paymentTermDays: initial.paymentTermDays,
       timeZone: initial.timeZone,
     },
@@ -63,7 +60,6 @@ function SettingsForm({ initial, onSaved }: { initial: Awaited<ReturnType<typeof
         <Field label="Business name" htmlFor="businessName" error={form.formState.errors.businessName?.message}><Input id="businessName" {...form.register("businessName")} /></Field>
         <Field label="Phone" htmlFor="phone"><Input id="phone" {...form.register("phone")} /></Field>
         <Field label="Email" htmlFor="email" error={form.formState.errors.email?.message}><Input id="email" {...form.register("email")} /></Field>
-        <Field label="Currency" htmlFor="currency"><Input id="currency" {...form.register("currency")} /></Field>
         <Field label="Invoice prefix" htmlFor="invoicePrefix"><Input id="invoicePrefix" {...form.register("invoicePrefix")} /></Field>
         <Field label="Time zone" htmlFor="timeZone"><Input id="timeZone" {...form.register("timeZone")} /></Field>
         <Field label="Tax label" htmlFor="taxLabel"><Input id="taxLabel" {...form.register("taxLabel")} /></Field>
@@ -71,8 +67,6 @@ function SettingsForm({ initial, onSaved }: { initial: Awaited<ReturnType<typeof
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" {...form.register("taxEnabled")} />Enable tax on invoices</label>
         <Field label="Payment term days" htmlFor="paymentTermDays"><Input id="paymentTermDays" {...form.register("paymentTermDays")} /></Field>
         <div className="md:col-span-2"><Field label="Address" htmlFor="address"><Textarea id="address" {...form.register("address")} /></Field></div>
-        <div className="md:col-span-2"><Field label="Default notes" htmlFor="defaultNotes"><Textarea id="defaultNotes" {...form.register("defaultNotes")} /></Field></div>
-        <div className="md:col-span-2"><Field label="Default terms" htmlFor="defaultTerms"><Textarea id="defaultTerms" {...form.register("defaultTerms")} /></Field></div>
         <Field label="Logo" htmlFor="logo">
           <Input id="logo" type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) logo.mutate(file); }} />
           {initial.hasLogo ? (

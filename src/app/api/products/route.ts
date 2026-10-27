@@ -11,8 +11,6 @@ export const GET = withApi(async (request: Request) => {
     page: query.page,
     pageSize: query.pageSize,
     search: query.search || undefined,
-    categoryId: query.categoryId || undefined,
-    active: query.active === "true" ? true : query.active === "false" ? false : undefined,
     stock: query.stock || undefined,
     sort: query.sort,
     dir: query.dir,
@@ -25,14 +23,10 @@ export const POST = withApi(async (request: Request) => {
   const input = productSchema.parse(await readJson(request));
   const product = await createProduct(
     {
-      ...input,
-      sku: input.sku ?? null,
+      name: input.name,
       description: input.description ?? null,
-      brand: input.brand ?? null,
-      colour: input.colour ?? null,
-      thickness: input.thickness ?? null,
-      defaultCostPrice: input.defaultCostPrice ?? null,
-      openingQuantity: input.openingQuantity ?? null,
+      quantity: input.quantity,
+      defaultSellingPrice: input.defaultSellingPrice,
     },
     session.user.id,
   );

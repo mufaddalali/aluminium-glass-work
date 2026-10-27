@@ -13,16 +13,13 @@ export const GET = withApi<Context>(async (_request, context) => {
 });
 
 export const PATCH = withApi<Context>(async (request, context) => {
-  await mutationSession(request);
+  const session = await mutationSession(request);
   const { id } = await context.params;
   const input = productSchema.parse(await readJson(request));
   return ok(await updateProduct(id, {
-    ...input,
-    sku: input.sku ?? null,
+    name: input.name,
     description: input.description ?? null,
-    brand: input.brand ?? null,
-    colour: input.colour ?? null,
-    thickness: input.thickness ?? null,
-    defaultCostPrice: input.defaultCostPrice ?? null,
-  }));
+    quantity: input.quantity,
+    defaultSellingPrice: input.defaultSellingPrice,
+  }, session.user.id));
 });

@@ -7,13 +7,13 @@ import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/feedback/confirm-dialog";
 import { ErrorState } from "@/components/feedback/states";
 import { PageHeader } from "@/components/layout/page-header";
-import { StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
 import { Input, Textarea } from "@/components/ui/input";
+import { MetricStrip } from "@/components/ui/metric";
 import { TableSkeleton } from "@/components/ui/skeleton";
-import { archiveProduct, getProduct, getShopSettings, listMovements, receiveStock, removeStock } from "@/features/inventory/services/inventory.service";
+import { getProduct, getShopSettings, listMovements, receiveStock, removeStock } from "@/features/inventory/services/inventory.service";
 import { getErrorMessage } from "@/lib/axios";
 import { formatDateTime, formatMoney, formatQuantity } from "@/lib/format";
 import { UNIT_LABELS } from "@/lib/glass";
@@ -21,23 +21,11 @@ import { todayInput } from "@/lib/use-debounced";
 import { queryKeys } from "@/query/query-keys";
 
 export function ProductDetail({ id }: { id: string }) {
-  const queryClient = useQueryClient();
   const product = useQuery({ queryKey: queryKeys.products.detail(id), queryFn: () => getProduct(id) });
   const movements = useQuery({ queryKey: queryKeys.movements.list({ productId: id }), queryFn: () => listMovements({ productId: id, page: 1, pageSize: 8 }) });
   const [receiveOpen, setReceiveOpen] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
-  const [archiveOpen, setArchiveOpen] = useState(false);
   const settingsQuery = useQuery({ queryKey: queryKeys.settings.current, queryFn: getShopSettings });
-
-  const archive = useMutation({
-    mutationFn: () => archiveProduct(id),
-    onSuccess: async () => {
-      toast.success("Product archived.");
-      setArchiveOpen(false);
-      await queryClient.invalidateQueries({ queryKey: queryKeys.products.all });
-    },
-    onError: (error) => toast.error(getErrorMessage(error, "The product could not be archived.")),
-  });
 
   if (product.isLoading) return <TableSkeleton />;
   if (product.isError || !product.data) return <ErrorState onRetry={() => void product.refetch()} />;
@@ -46,20 +34,17 @@ export function ProductDetail({ id }: { id: string }) {
 
   return (
     <div className="space-y-8">
-      <PageHeader title={item.name} description={item.categoryName} actions={
+      <PageHeader title={item.name} description={item.description || "No description."} actions={
         <>
           <Button variant="outline" asChild><Link href={`/inventory/${id}/edit`}>Edit</Link></Button>
           <Button onClick={() => setReceiveOpen(true)}>Add stock</Button>
           <Button variant="outline" onClick={() => setRemoveOpen(true)}>Remove stock</Button>
-          {item.isActive ? <Button variant="destructive" onClick={() => setArchiveOpen(true)}>Archive</Button> : null}
         </>
       } />
-      <div className="grid gap-4 md:grid-cols-4">
-        <Metric label="On hand" value={`${formatQuantity(item.stockQuantity)} ${UNIT_LABELS[item.inventoryUnit]}`} />
-        <Metric label="Minimum" value={formatQuantity(item.minimumStockLevel)} />
-        <Metric label="Selling price" value={formatMoney(item.defaultSellingPrice)} />
-        <Metric label="Status" value={<StatusBadge status={item.isActive ? item.stockStatus : "ARCHIVED"} />} />
-      </div>
+      <MetricStrip items={[
+        { label: "Quantity", value: formatQuantity(item.stockQuantity) },
+        { label: "Default selling price", value: formatMoney(item.defaultSellingPrice) },
+      ]} />
       <section className="surface-card p-5">
         <h2 className="text-lg font-semibold">Recent movements</h2>
         <div className="mt-4 space-y-3">
@@ -77,13 +62,8 @@ export function ProductDetail({ id }: { id: string }) {
       </section>
       <StockDialog open={receiveOpen} onOpenChange={setReceiveOpen} title="Add stock" productId={id} mode="in" />
       <StockDialog open={removeOpen} onOpenChange={setRemoveOpen} title="Remove stock" productId={id} mode="out" />
-      <ConfirmDialog open={archiveOpen} onOpenChange={setArchiveOpen} title="Archive this product?" description="Archived products stay on old invoices but cannot be sold from stock." confirmLabel="Archive" destructive loading={archive.isPending} onConfirm={() => archive.mutate()} />
     </div>
   );
-}
-
-function Metric({ label, value }: { label: string; value: React.ReactNode }) {
-  return <div className="surface-card p-5"><p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">{label}</p><div className="mt-2 text-2xl font-semibold">{value}</div></div>;
 }
 
 function StockDialog({ open, onOpenChange, title, productId, mode }: { open: boolean; onOpenChange: (open: boolean) => void; title: string; productId: string; mode: "in" | "out" }) {
@@ -118,7 +98,7 @@ function StockDialog({ open, onOpenChange, title, productId, mode }: { open: boo
             <Field label="Quantity" htmlFor="stock-qty"><Input id="stock-qty" inputMode="decimal" value={quantity} onChange={(event) => setQuantity(event.target.value)} /></Field>
             <Field label="Date" htmlFor="stock-date"><Input id="stock-date" type="date" value={occurredAt} onChange={(event) => setOccurredAt(event.target.value)} /></Field>
             <Field label="Reason type" htmlFor="stock-type">
-              <select id="stock-type" className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm" value={movementType} onChange={(event) => setMovementType(event.target.value)}>
+              <select id="stock-type" className="control-glass h-11 w-full rounded-2xl px-3.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30" value={movementType} onChange={(event) => setMovementType(event.target.value)}>
                 {mode === "in" ? <><option value="RECEIPT">Stock received</option><option value="INITIAL">Opening stock</option><option value="MANUAL_ADD">Manual addition</option><option value="CORRECTION">Correction</option><option value="CUSTOMER_RETURN">Customer return</option></> : <><option value="MANUAL_REMOVE">Damage, use, or removal</option><option value="CORRECTION">Correction</option></>}
               </select>
             </Field>

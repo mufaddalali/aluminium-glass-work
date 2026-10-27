@@ -3,7 +3,7 @@ import { toCsv } from "@/lib/csv";
 import { formatDateOnly, formatMoney, formatQuantity } from "@/lib/format";
 import { UNIT_LABELS } from "@/lib/glass";
 import { netPaid, outstandingAmount } from "@/lib/invoice-math";
-import { d, money, qty } from "@/lib/money";
+import { d, money } from "@/lib/money";
 import type { PageMeta } from "@/lib/types";
 import { listMovements } from "@/server/services/inventory.service";
 import { ensureSettings } from "@/server/services/settings.service";
@@ -19,7 +19,6 @@ export const REPORT_TYPES = [
   "outstanding",
   "customers",
   "stock",
-  "low-stock",
   "movements",
   "payments",
   "outside",
@@ -54,8 +53,7 @@ export async function getReport(type: ReportType, query: {
     case "customers":
       return customerReport(query, currency);
     case "stock":
-    case "low-stock":
-      return stockReport(type, query, currency);
+      return stockReport(query, currency);
     case "movements":
       return movementReport(query);
     case "payments":
@@ -178,52 +176,42 @@ async function customerReport(query: { page: number; pageSize: number; search?: 
   };
 }
 
-async function stockReport(type: "stock" | "low-stock", query: { page: number; pageSize: number; search?: string }, currency: string): Promise<ReportTable> {
+async function stockReport(query: { page: number; pageSize: number; search?: string }, currency: string): Promise<ReportTable> {
   const search = query.search ? `%${query.search}%` : null;
-  const stockSql = type === "low-stock" ? Prisma.sql`AND p."stockQuantity" <= p."minimumStockLevel"` : Prisma.empty;
-  const searchSql = search ? Prisma.sql`AND (p."name" ILIKE ${search} OR COALESCE(p."sku", '') ILIKE ${search})` : Prisma.empty;
+  const searchSql = search ? Prisma.sql`AND (p."name" ILIKE ${search} OR COALESCE(p."description", '') ILIKE ${search})` : Prisma.empty;
   const countRows = await prisma.$queryRaw<Array<{ count: number }>>`
     SELECT COUNT(*)::int AS count
     FROM "Product" p
-    WHERE p."isActive" = true ${stockSql} ${searchSql}
+    WHERE TRUE ${searchSql}
   `;
   const idRows = await prisma.$queryRaw<Array<{ id: string }>>`
     SELECT p."id" FROM "Product" p
-    WHERE p."isActive" = true ${stockSql} ${searchSql}
+    WHERE TRUE ${searchSql}
     ORDER BY p."name" ASC
     LIMIT ${query.pageSize} OFFSET ${(query.page - 1) * query.pageSize}
   `;
   const products = idRows.length
-    ? await prisma.product.findMany({ where: { id: { in: idRows.map((row) => row.id) } }, include: { category: true } })
+    ? await prisma.product.findMany({ where: { id: { in: idRows.map((row) => row.id) } } })
     : [];
   const byId = new Map(products.map((product) => [product.id, product]));
   return {
-    type,
-    title: type === "low-stock" ? "Low and out of stock" : "Stock on hand",
-    description: type === "low-stock"
-      ? "Active products at or below their minimum stock level."
-      : "Current quantity of active products. Stock value uses the default cost price when one is recorded.",
+    type: "stock",
+    title: "Stock on hand",
+    description: "Current quantity and selling price of each product.",
     columns: [
-      { key: "product", label: "Product" },
-      { key: "sku", label: "SKU" },
-      { key: "category", label: "Category" },
+      { key: "product", label: "Name" },
       { key: "quantity", label: "Quantity" },
-      { key: "unit", label: "Unit" },
-      { key: "minimum", label: "Minimum" },
-      { key: "value", label: "Cost value" },
+      { key: "price", label: "Default selling price" },
+      { key: "description", label: "Description" },
     ],
     rows: idRows.flatMap((row) => {
       const product = byId.get(row.id);
       if (!product) return [];
-      const value = product.defaultCostPrice ? qty(product.stockQuantity.toString()).mul(d(product.defaultCostPrice.toString())) : null;
       return [{
         product: product.name,
-        sku: product.sku ?? "",
-        category: product.category.name,
         quantity: formatQuantity(product.stockQuantity.toString()),
-        unit: UNIT_LABELS[product.inventoryUnit],
-        minimum: formatQuantity(product.minimumStockLevel.toString()),
-        value: value ? formatMoney(money(value), currency) : "",
+        price: formatMoney(product.defaultSellingPrice.toString(), currency),
+        description: product.description ?? "",
       }];
     }),
     meta: pageMeta(countRows[0]?.count ?? 0, query.page, query.pageSize),
