@@ -1,0 +1,149 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f3f6f6;
+  --foreground: #12201f;
+  --card: #ffffff;
+  --card-foreground: #12201f;
+  --muted: #e6eeee;
+  --muted-foreground: #5c6d6b;
+  --border: #d5e1e0;
+  --input: #d5e1e0;
+  --primary: #0f6e6b;
+  --primary-foreground: #f3fffe;
+  --secondary: #e7f3f2;
+  --secondary-foreground: #0d3d3b;
+  --accent: #0f6e6b;
+  --accent-foreground: #f3fffe;
+  --destructive: #b42318;
+  --destructive-foreground: #ffffff;
+  --success: #0f7a45;
+  --success-foreground: #f3fff8;
+  --warning: #b45309;
+  --warning-foreground: #fff8eb;
+  --info: #1d4e89;
+  --info-foreground: #f3f8ff;
+  --ring: #0f6e6b;
+  --shadow-xs: 0 1px 1px rgb(16 32 31 / 0.04);
+  --shadow-sm: 0 1px 2px rgb(16 32 31 / 0.05);
+  --shadow-md: 0 8px 20px rgb(16 32 31 / 0.06);
+  --shadow-lg: 0 16px 40px rgb(16 32 31 / 0.08);
+  --shadow-primary: 0 1px 2px rgb(15 110 107 / 0.28);
+  --radius: 1rem;
+}
+
+.dark {
+  --background: #0e1514;
+  --foreground: #e7f1f0;
+  --card: #16201f;
+  --card-foreground: #e7f1f0;
+  --muted: #1c2b29;
+  --muted-foreground: #9aadaa;
+  --border: #2a3b39;
+  --input: #2a3b39;
+  --primary: #3aada7;
+  --primary-foreground: #042221;
+  --secondary: #1a3331;
+  --secondary-foreground: #d7f4f2;
+  --accent: #3aada7;
+  --accent-foreground: #042221;
+  --destructive: #f04438;
+  --destructive-foreground: #2a0b08;
+  --success: #3dbe7a;
+  --success-foreground: #042214;
+  --warning: #f5b942;
+  --warning-foreground: #2a1d04;
+  --info: #7cb3ef;
+  --info-foreground: #041426;
+  --ring: #3aada7;
+  --shadow-xs: 0 1px 1px rgb(0 0 0 / 0.25);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.28);
+  --shadow-md: 0 8px 20px rgb(0 0 0 / 0.32);
+  --shadow-lg: 0 16px 40px rgb(0 0 0 / 0.4);
+  --shadow-primary: 0 1px 2px rgb(58 173 167 / 0.3);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-ring: var(--ring);
+  --font-sans: var(--font-sans);
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-primary: var(--shadow-primary);
+}
+
+* { border-color: var(--border); }
+
+html, body { min-height: 100%; }
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), "Plus Jakarta Sans", sans-serif;
+}
+
+.surface-card {
+  background: var(--card);
+  color: var(--card-foreground);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.surface-glass {
+  background: color-mix(in srgb, var(--card) 88%, transparent);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--border);
+}
+
+.interactive-lift { transition: transform 160ms ease, box-shadow 160ms ease; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .interactive-lift:hover { transform: translateY(-1px); box-shadow: var(--shadow-md); }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(90deg, var(--muted) 25%, color-mix(in srgb, var(--card) 70%, var(--muted)) 37%, var(--muted) 63%);
+  background-size: 400% 100%;
+  animation: shimmer 1.4s ease infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-shimmer { animation: none; }
+}
+
+@keyframes shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: 0 0; }
+}
+
+@media print {
+  @page { size: A4; margin: 12mm; }
+  .no-print { display: none !important; }
+  body { background: white; color: black; }
+  .print-sheet { box-shadow: none !important; border: 0 !important; }
+  .print-break { break-inside: avoid; }
+}

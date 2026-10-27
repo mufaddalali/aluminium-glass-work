@@ -1,0 +1,301 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum UserRole {
+  OWNER
+  STAFF
+}
+
+enum InventoryUnit {
+  SQ_FT
+  SQ_M
+  RUNNING_FT
+  METER
+  PIECE
+  SHEET
+  KILOGRAM
+}
+
+enum DimensionUnit {
+  MM
+  CM
+  IN
+  FT
+  M
+}
+
+enum MovementType {
+  INITIAL
+  RECEIPT
+  MANUAL_ADD
+  MANUAL_REMOVE
+  CORRECTION
+  INVOICE_ISSUED
+  INVOICE_VOIDED
+  CUSTOMER_RETURN
+}
+
+enum MovementDirection {
+  IN
+  OUT
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PARTIALLY_PAID
+  PAID
+  VOID
+}
+
+enum SourceType {
+  STOCK
+  OUTSIDE_PURCHASE
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CARD
+  MOBILE_WALLET
+  OTHER
+}
+
+enum PaymentKind {
+  PAYMENT
+  REFUND
+}
+
+model User {
+  id             String          @id @default(cuid())
+  name           String
+  email          String          @unique
+  passwordHash   String
+  role           UserRole        @default(STAFF)
+  isActive       Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  sessions       Session[]
+  stockMovements StockMovement[]
+  invoices       Invoice[]       @relation("InvoiceCreatedBy")
+  payments       Payment[]
+
+  @@index([isActive])
+}
+
+model Session {
+  id         String    @id @default(cuid())
+  userId     String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  userAgent  String?
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model LoginAttempt {
+  id          String   @id @default(cuid())
+  emailKey    String
+  ipAddress   String
+  success     Boolean
+  attemptedAt DateTime @default(now())
+
+  @@index([emailKey, attemptedAt])
+  @@index([ipAddress, attemptedAt])
+}
+
+model Customer {
+  id             String    @id @default(cuid())
+  name           String
+  phone          String
+  alternatePhone String?
+  email          String?
+  address        String?
+  notes          String?
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  invoices       Invoice[]
+
+  @@index([name])
+  @@index([phone])
+  @@index([email])
+  @@index([isActive])
+}
+
+model ProductCategory {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  products  Product[]
+}
+
+model Product {
+  id                  String           @id @default(cuid())
+  sku                 String?          @unique
+  name                String
+  categoryId          String
+  description         String?
+  brand               String?
+  colour              String?
+  thickness           String?
+  inventoryUnit       InventoryUnit
+  stockQuantity       Decimal          @default(0) @db.Decimal(14, 3)
+  minimumStockLevel   Decimal          @default(0) @db.Decimal(14, 3)
+  defaultCostPrice    Decimal?         @db.Decimal(14, 2)
+  defaultSellingPrice Decimal          @default(0) @db.Decimal(14, 2)
+  isActive            Boolean          @default(true)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  category            ProductCategory  @relation(fields: [categoryId], references: [id])
+  movements           StockMovement[]
+  invoiceLines        InvoiceLine[]
+
+  @@index([name])
+  @@index([categoryId])
+  @@index([isActive])
+}
+
+model StockMovement {
+  id                String            @id @default(cuid())
+  productId         String
+  movementType      MovementType
+  direction         MovementDirection
+  quantity          Decimal           @db.Decimal(14, 3)
+  unit              InventoryUnit
+  stockBefore       Decimal?          @db.Decimal(14, 3)
+  stockAfter        Decimal?          @db.Decimal(14, 3)
+  reason            String
+  referenceType     String?
+  referenceId       String?
+  supplierName      String?
+  supplierReference String?
+  costPrice         Decimal?          @db.Decimal(14, 2)
+  occurredAt        DateTime          @default(now())
+  createdById       String
+  createdAt         DateTime          @default(now())
+  product           Product           @relation(fields: [productId], references: [id])
+  createdBy         User              @relation(fields: [createdById], references: [id])
+
+  @@index([productId, occurredAt])
+  @@index([referenceType, referenceId])
+  @@index([occurredAt])
+}
+
+model InvoiceCounter {
+  year       Int @id
+  lastNumber Int @default(0)
+}
+
+model Invoice {
+  id             String        @id @default(cuid())
+  invoiceNumber  String?       @unique
+  customerId     String
+  status         InvoiceStatus @default(DRAFT)
+  invoiceDate    DateTime
+  dueDate        DateTime?
+  subtotal       Decimal       @default(0) @db.Decimal(14, 2)
+  discountAmount Decimal       @default(0) @db.Decimal(14, 2)
+  taxAmount      Decimal       @default(0) @db.Decimal(14, 2)
+  totalAmount    Decimal       @default(0) @db.Decimal(14, 2)
+  notes          String?
+  terms          String?
+  createdById    String
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  issuedAt       DateTime?
+  voidedAt       DateTime?
+  voidReason     String?
+  customer       Customer      @relation(fields: [customerId], references: [id])
+  createdBy      User          @relation("InvoiceCreatedBy", fields: [createdById], references: [id])
+  lines          InvoiceLine[]
+  payments       Payment[]
+
+  @@index([customerId])
+  @@index([status])
+  @@index([invoiceDate])
+  @@index([issuedAt])
+}
+
+model InvoiceLine {
+  id                String         @id @default(cuid())
+  invoiceId         String
+  productId         String?
+  itemName          String
+  description       String?
+  sourceType        SourceType
+  quantity          Decimal        @db.Decimal(14, 3)
+  unit              InventoryUnit
+  width             Decimal?       @db.Decimal(14, 3)
+  height            Decimal?       @db.Decimal(14, 3)
+  dimensionUnit     DimensionUnit?
+  pieceCount        Int?
+  unitPrice         Decimal        @db.Decimal(14, 2)
+  discountAmount    Decimal        @default(0) @db.Decimal(14, 2)
+  lineTotal         Decimal        @db.Decimal(14, 2)
+  purchaseCost      Decimal?       @db.Decimal(14, 2)
+  supplierName      String?
+  supplierReference String?
+  purchaseNotes     String?
+  sortOrder         Int            @default(0)
+  createdAt         DateTime       @default(now())
+  invoice           Invoice        @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  product           Product?       @relation(fields: [productId], references: [id])
+
+  @@index([invoiceId])
+  @@index([productId])
+  @@index([sourceType])
+}
+
+model Payment {
+  id             String        @id @default(cuid())
+  invoiceId      String
+  kind           PaymentKind   @default(PAYMENT)
+  amount         Decimal       @db.Decimal(14, 2)
+  paymentMethod  PaymentMethod
+  paymentDate    DateTime
+  reference      String?
+  notes          String?
+  idempotencyKey String?       @unique
+  receivedById   String
+  createdAt      DateTime      @default(now())
+  invoice        Invoice       @relation(fields: [invoiceId], references: [id])
+  receivedBy     User          @relation(fields: [receivedById], references: [id])
+
+  @@index([invoiceId])
+  @@index([paymentDate])
+}
+
+model BusinessSettings {
+  id            String   @id @default("default")
+  businessName  String
+  address       String?
+  phone         String?
+  email         String?
+  logoBytes     Bytes?
+  logoMimeType  String?
+  invoicePrefix String   @default("INV")
+  currency      String   @default("PKR")
+  taxEnabled    Boolean  @default(false)
+  taxRate       Decimal  @default(0) @db.Decimal(7, 4)
+  taxLabel      String   @default("Tax")
+  defaultTerms  String?
+  defaultNotes  String?
+  paymentTermDays Int?
+  timeZone      String   @default("Asia/Karachi")
+  updatedAt     DateTime @updatedAt
+}
